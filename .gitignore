@@ -1,0 +1,9 @@
+/ETL/cleaned_data
+/ETL/raw_data
+/ETL/transformed_data
+/ETL/.venv
+/Frontend/client_secret.json
+/Frontend/venv
+/Frontend/__pycache__
+/Frontend/.env
+/.env

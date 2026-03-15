@@ -1,0 +1,6 @@
+[theme]
+base="dark"
+primaryColor="#D90368"             # Pink (Matches your buttons)
+backgroundColor="#08082dff"          # Deep Black (Matches your .stApp css)
+textColor="#FFFFFF"                # White text
+font="sans serif"
