@@ -2,7 +2,7 @@
 /ETL/raw_data
 /ETL/transformed_data
 /ETL/.venv
-/Frontend/client_secret.json
+/Frontend/client_secrets.json
 /Frontend/venv
 /Frontend/__pycache__
 /Frontend/.env
