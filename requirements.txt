@@ -1,0 +1,22 @@
+# --- Core Application & Data Handling ---
+streamlit
+pandas
+
+# --- Database Integration ---
+mysql-connector-python
+
+# --- Security & Environment Variables ---
+python-dotenv
+bcrypt
+
+# --- Google & YouTube APIs ---
+google-api-python-client
+google-auth-oauthlib
+google-genai
+
+# --- Data Visualization ---
+plotly
+
+# --- Utilities ---
+isodate
+pycountry
