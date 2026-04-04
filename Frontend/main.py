@@ -30,7 +30,11 @@ st.set_page_config(page_title="YouTube Analytics Studio", page_icon="⚡", layou
 
 # --- LOAD CSS ---
 def local_css(file_name):
-    with open(file_name, encoding='utf-8') as f:
+    # This dynamically finds the folder where main.py is located
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(current_dir, file_name)
+    
+    with open(file_path, encoding='utf-8') as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 local_css("style.css")
