@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GOOGLE_CLIENT_SECRETS_FILE = os.getenv("GOOGLE_CLIENT_SECRETS_FILE")
-REDIRECT_URI = os.getenv("REDIRECT_URI")
+GOOGLE_CLIENT_SECRETS_FILE = os.getenv("GOOGLE_CLIENT_SECRETS_FILE", "client_secrets.json")
+REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:8501")
 SCOPES = ['https://www.googleapis.com/auth/userinfo.email', 
           'https://www.googleapis.com/auth/userinfo.profile', 
           'openid',
@@ -95,7 +95,9 @@ def login_dialog():
                                 scopes=SCOPES,
                                 redirect_uri=REDIRECT_URI
                             )
-                            auth_url, _ = flow.authorization_url(prompt='consent')
+                            auth_url, state = flow.authorization_url(prompt='consent')
+                            with open(".oauth_state", "w") as f:
+                                f.write(getattr(flow, 'code_verifier', ''))
                             
                             # JavaScript-style redirect to Google
                             st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{auth_url}\'">', unsafe_allow_html=True)
@@ -120,7 +122,9 @@ def login_dialog():
                     redirect_uri=REDIRECT_URI
                 )
                 # prompt='consent' forces the "Permission" screen to appear
-                auth_url, _ = flow.authorization_url(prompt='consent')
+                auth_url, state = flow.authorization_url(prompt='consent')
+                with open(".oauth_state", "w") as f:
+                    f.write(getattr(flow, 'code_verifier', ''))
 
                 # 2. Redirect to Google for verification
                 st.markdown(f'''
@@ -165,7 +169,9 @@ def login_dialog():
                 scopes=SCOPES,
                 redirect_uri=REDIRECT_URI
             )
-            auth_url, _ = flow.authorization_url(prompt='select_account')
+            auth_url, state = flow.authorization_url(prompt='select_account')
+            with open(".oauth_state", "w") as f:
+                f.write(getattr(flow, 'code_verifier', ''))
             
             # CLEANER CODE: Uses the .google-btn class from style.css
             st.markdown(f'''
@@ -186,67 +192,72 @@ def handle_google_redirect():
             scopes=SCOPES,
             redirect_uri=REDIRECT_URI
         )
-        flow.fetch_token(code=code)
+        
+        cv = None
+        if os.path.exists(".oauth_state"):
+            with open(".oauth_state", "r") as f:
+                cv = f.read().strip()
+                
+        if cv:
+            flow.fetch_token(code=code, code_verifier=cv)
+        else:
+            flow.fetch_token(code=code)
         session = flow.authorized_session()
         
         user_info = session.get('https://www.googleapis.com/userinfo/v2/me').json()
         email = user_info.get('email')
         name = user_info.get('name', 'User')
 
-        # 1. IDENTIFY: Check MySQL immediately
+        # 1. Create user in DB if they don't exist
+        if not analytics.google_user_exists(email):
+            analytics.create_user(email, None, name, 'google')
+
+        # 2. AUTOMATIC YOUTUBE LINKING
         existing_channel_id = analytics.get_my_channel(email)
-
+        
         if existing_channel_id:
-            # 2. LOCK STATE: Set everything main.py needs
-            st.session_state["authenticated"] = True
-            st.session_state["user_email"] = email
-            st.session_state["user_name"] = name
             st.session_state['channel_id'] = existing_channel_id
-            st.session_state['just_browsing'] = False
-            
-            # 3. CLEANUP & FLIP: Remove 'code' from URL and re-render
-            st.query_params.clear()
-            st.session_state["show_auth_dialog"] = False
-            st.rerun() # Skip login_success to avoid redundant checks
-            return 
+        else:
+            # If not in MySQL, automatically fetch it from Google!
+            ch_res = session.get('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true').json()
+            if ch_res.get('items'):
+                channel_id = ch_res['items'][0]['id']
+                analytics.link_user_channel(email, channel_id, name)
+                st.session_state['channel_id'] = channel_id
+            else:
+                st.error(f"Could not find YouTube channel. Google API response: {ch_res}")
+                st.stop()
 
-        # 4. AUTHORIZE: Only for brand new users
-        ch_res = session.get('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true').json()
-        if ch_res.get('items'):
-            channel_id = ch_res['items'][0]['id']
-            analytics.link_user_channel(email, channel_id, name)
-            st.session_state['channel_id'] = channel_id
-            st.session_state['just_browsing'] = False
-
+        # 3. Clean URL and Log In normally through the helper function
         st.query_params.clear()
         login_success(email)
 
     except Exception as e:
+        import traceback
+        with open("debug_auth.txt", "w") as f:
+            f.write(f"Error: {e}\n\nTraceback:\n{traceback.format_exc()}")
         st.error(f"Redirect Error: {e}")
         
 # auth.py
 def login_success(email):
-    # 1. AUTHENTICATE: Set the core session states
+    # 1. AUTHENTICATE
     st.session_state["authenticated"] = True
     st.session_state["user_email"] = email
-    
-    # 2. IDENTIFY: Get the user's name from the DB (Fixes the split error)
     st.session_state["user_name"] = analytics.get_user_name(email) 
     
-    # 3. YOUTUBE CHECK: Fetch the channel ID linked to this Email
-    my_id = analytics.get_my_channel(email) 
+    # 2. CHANNEL REDIRECT LOGIC
+    # If the Google Redirect didn't set the channel, check the DB again
+    if st.session_state.get('channel_id') is None:
+        st.session_state['channel_id'] = analytics.get_my_channel(email) 
     
-    if my_id:
-        # 4. RENDER: Set the ID so main.py skips the landing page
-        st.session_state['channel_id'] = my_id 
+    if st.session_state.get('channel_id'):
         st.session_state['just_browsing'] = False
-        st.toast(f"Authorized! Loading {my_id} dashboard...")
+        st.toast("Authorized! Loading dashboard...")
     else:
-        # If no channel is linked, they stay on landing but are logged in
         st.session_state['channel_id'] = None
         st.toast("Authenticated! Please search and select your channel.")
     
-    # 5. EXECUTE: Close the login box and re-run the app logic
+    # 3. EXECUTE
     st.session_state["show_auth_dialog"] = False
     st.rerun()
 

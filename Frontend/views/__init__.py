@@ -1,0 +1,1 @@
+# Tells Python to treat the 'views' folder as a package so main.py can import from it.

@@ -2,7 +2,11 @@
 /ETL/raw_data
 /ETL/transformed_data
 /Frontend/client_secrets.json
-/Frontend/__pycache__
-/Frontend/.env
+/Frontend/.oauth_state
 /venv
-/.env
+.env
+.vscode/
+
+# Ignore all Python cache directories globally
+__pycache__/
+*.pyc
